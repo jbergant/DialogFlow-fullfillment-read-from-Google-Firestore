@@ -1,5 +1,16 @@
 'use strict';
 const functions = require('firebase-functions');
+const admin = require('firebase-admin');
+
+var serviceAccount = require("./config/dialogflowtutorial-587b5-firebase-adminsdk-zfq4n-b347223ad6.json");
+
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: "https://dialogflowtutorial-587b5.firebaseio.com"
+});
+
+var db = admin.firestore();
+
 
 process.env.DEBUG = 'dialogflow:debug'; // enables lib debugging statements
 
@@ -9,54 +20,64 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
     let action = request.body.queryResult.action;
 
     let responseJson = {};
-
     switch (action) {
         case "buy.drone-types":
-            responseJson.fulfillmentText = 'Available drones here from fulfillment';
-            let richResponses = [
-                {
-                    "text": {
-                        "text": [
-                            "Here is a list of all available Beginners Drone"
-                        ]
-                    },
-                    "platform": "FACEBOOK"
-                },
-                {
-                    "card": {
-                        "title": "ALTAIR AERIAL AA108",
-                        "subtitle": "FOR YOUNG DRONE ENTHUSIASTS & BEGINNERS",
-                        "imageUri": "https://mydeardrone.com/wp-content/uploads/2018/11/Altair-AA108-Camera-Drone-RC-Quadcopter-w-720p-HD-FPV-Camera-VR-Headless-Mode-Altitude-Hold-3-Skill-Modes-Great-for-Kids-Beginners-Easy-Fly-Indoor-Drone-2-Batteries.jpg",
-                        "buttons": [
-                            {
-                                "text": "View more",
-                                "postback": "https://mydeardrone.com/types/beginner/"
-                            }
-                        ]
-                    },
-                    "platform": "FACEBOOK"
-                },
-                {
-                    "card": {
-                        "title": "UDI U818A HD+",
-                        "subtitle": "BEST BEGINNER DRONE",
-                        "imageUri": "https://mydeardrone.com/wp-content/uploads/2018/03/Force1-UDI-U818A-Camera-Drone-for-Kids-HD-Drone-with-Camera-for-Beginners-720p-RC-Camera-Drones-w-360%C2%B0-Flips-Extra-Battery.jpg",
-                        "buttons": [
-                            {
-                                "text": "View more",
-                                "postback": "https://mydeardrone.com/types/beginner/"
-                            }
-                        ]
-                    },
-                    "platform": "FACEBOOK"
-                }
-            ];
-            responseJson.fulfillmentMessages = richResponses;
+
+            let droneTypes = request.body.queryResult.parameters['drone-types'];
+            let droneTypesKey = droneTypes.replace(/\s/g,'');
+
+            let dronesRead = db.collection(droneTypesKey).get();
+            dronesRead.then((snapshot) => {
+                let richResponses = [
+                    {
+                        "text": {
+                            "text": [
+                                `Here is a list of all available ${droneTypes} from the dynamic fulfillment call`
+                            ]
+                        },
+                        "platform": "FACEBOOK"
+                    }
+                ];
+
+                snapshot.forEach((doc) => {
+                    var data = doc.data();
+                    let card = {
+                        "card": {
+                            "title": data.title,
+                            "subtitle": data.subtitle,
+                            "imageUri": data.imageUri,
+                            "buttons": [
+                                {
+                                    "text": data.buttons.text,
+                                    "postback": data.buttons.postback
+                                }
+                            ]
+                        },
+                        "platform": "FACEBOOK"
+                    };
+                    richResponses.push(card);
+
+                });
+
+                return richResponses;
+            }).then((richResponses) => {
+                let responseJson = {};
+                responseJson.fulfillmentMessages = richResponses;
+                response.json(responseJson);
+            })
+                .catch((err) => {
+                    console.log('Error getting documents', err);
+                });
+
+
+
             break;
         default:
+
             responseJson.fulfillmentText = 'Unknown action';
+            response.json(responseJson);
     }
 
-    response.json(responseJson);
+
 });
 
